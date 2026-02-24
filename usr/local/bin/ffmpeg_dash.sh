@@ -30,3 +30,18 @@ do
       # 1초 체크했더니 실패한 경우 2초 대기
       sleep 2
 done
+
+# 체크 성공하면 실시간 스트림 트랜스코딩+세그멘테이션
+/usr/bin/ffmpeg -loglevel info -i rtmp://127.0.0.1/app/$NAME \
+    -filter_complex "[0:v]split=2[v1][v2tmp]; [v2tmp]scale=640:-2[v2]" \
+    -map "[v1]" -c:v:0 libx264 -preset ultrafast -tune zerolatency -b:v:0 2500k -g 60 \
+    -map "[v2]" -c:v:1 libx264 -preset ultrafast -tune zerolatency -b:v:1 800k -g 60 \
+    -map 0:a -c:a aac -b:a 128k \
+    -f dash \
+      -seg_duration 2 -window_size 5 -extra_window_size 2 \
+      -use_timeline 1 -use_template 1 \
+      -init_seg_name 'rep_$RepresentationID$/init.m4s' \
+      -media_seg_name 'rep_$RepresentationID$/chunk_$Number%05d$.m4s' \
+      -adaptation_sets "id=0,streams=v id=1,streams=a" \
+      -threads 4 \
+    "$BASE_DIR/$NAME.mpd"

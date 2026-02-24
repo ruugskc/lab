@@ -20,40 +20,58 @@ function pad(num, size) {
 
 // 특정 Representation ID의 라이브 엣지 번호 반환
 function getLatestNum(mpdBody, repId) {
-    // 1. 해당 ID 블록 추출
-    const blockRegex = new RegExp(`id="${repId}"[\\s\\S]*?<SegmentTemplate[\\s\\S]*?>([\\s\\S]*?)<\\/SegmentTemplate>`);
+    // 해당 ID 블록에서 <S> 태그가 포함된 문자열 추출
+    const blockRegex = new RegExp(
+        `<Representation id="${repId}"[\\s\\S]*?<SegmentTemplate[\\s\\S]*?.m4s ([\\s\\S]*?)<\\/SegmentTimeline>`);
+    
+    /* 위의 정규식 blockRegex는 .mpd의 해당 부분을 추출한다는 뜻
+
+        <Representation id=...> <SegmentTemplate... 이후의
+            
+            startNumber="숫자">
+                <SetmentTimeline>
+                    이 안에 있는 1개 이상의 <S> 태그들..
+                </SetmentTimeline> 
+            까지.
+        match() 결과의 [1]번 원소, 즉
+        아래 timeline에는 해당 부분이 문자열로 저장됨
+    */
+
     const blockMatch = mpdBody.match(blockRegex);
     if (!blockMatch) return null;
 
-    const block = blockMatch[0];
-    const timeline = blockMatch[1];
+    const mpdRes = blockMatch[1];
 
-    // 2. startNumber 추출
-    const startMatch = block.match(/startNumber="(\d+)"/);
-    const startNum = startMatch ? parseInt(startMatch[1]) : 0;
+    // 모든 <S> 태그를 배열로 가져옴(g 플래그의 의미)
+    const sTags = mpdRes.match(/<S [\s\S]*?\/>/g);
+    let totalSegments = 0;
 
-    // 3. SegmentTimeline 내 모든 r값의 합 계산 (또는 마지막 r값 기준)
-    // 오디오처럼 <S>가 여러 개인 경우 모든 r+1을 더해야 정확하지만, 
-    // 단순 부하 테스트용이라면 마지막 r값만 참조해도 라이브 엣지 근처에 도달합니다.
-    const rMatches = timeline.match(/r="(\d+)"/g);
-    let totalR = 0;
-    if (rMatches) {
-        // 모든 r="n" 에서 숫자만 뽑아 더함
-        rMatches.forEach(m => {
-            totalR += (parseInt(m.match(/\d+/)[0]) + 1);
+    if(sTags) {
+        // 각 <S>태그 안에 "r=숫자" 있는지 확인 후 덧셈
+        sTags.forEach(tag => {
+            const rMatch = tag.match(/r="(\d+)"/);
+            if(rMatch) {
+                totalSegments += (parseInt(rMatch[1]) + 1);
+            } else {
+                totalSegments += 1;
+            }
         });
     }
 
-    return startNum + totalR - 1; // 마지막 세그먼트 번호
+    // startNumber 추출
+    const startMatch = mpdRes.match(/startNumber="(\d+)"/);
+    const startNum = startMatch ? parseInt(startMatch[1]) : 0;
+
+    return startNum + totalSegments - 1; // 마지막 세그먼트 번호
 }
 
 export default function () {
     // .mpd 파일 요청(주기적으로 호출해야 함)
-    http.get(`${BASE_URL}/samsoon.mpd`);
+    mpdRes = http.get(`${BASE_URL}/samsoon.mpd`);
     
     // 비디오와 오디오의 라이브 엣지(가장 최신 지점)
-    const vNum = getLatestNum(mpdRes, VIDEO_REP_ID);
-    const aNum = getLatestNum(mpdRes, AUDIO_REP_ID);
+    const vNum = getLatestNum(mpdRes.body, VIDEO_REP_ID);
+    const aNum = getLatestNum(mpdRes.body, AUDIO_REP_ID);
 
     if (vNum && aNum) {
         // 비디오와 오디오 동시에 요청
