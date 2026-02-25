@@ -2,13 +2,13 @@ import http from 'k6/http'
 import  { check, sleep } from 'k6'
 
 export const options = {
-        vus: 100,
-        duration: '3m'
+    vus: 100,
+    duration: '3m'
 };
 
 const BASE_URL = 'http://192.168.0.61/dash';
-const VIDEO_REP_ID = '0';
-const AUDIO_REP_ID = '2';
+const VIDEO_ID = '1';
+const AUDIO_ID = '2';
 const SEGMENTS_PER_MPD = 5; // 한 번의 MPD 요청으로 가져올 세그먼트 개수 설정
 
 // 5자리 숫자로 만들기(0으로 빈공간 패딩)
@@ -22,16 +22,16 @@ function pad(num, size) {
 function getLatestNum(mpdBody, repId) {
     // 해당 ID 블록에서 <S> 태그가 포함된 문자열 추출
     const blockRegex = new RegExp(
-        `<Representation id="${repId}"[\\s\\S]*?<SegmentTemplate[\\s\\S]*?.m4s ([\\s\\S]*?)<\\/SegmentTimeline>`);
+        `<Representation id="${repId}"[\\s\\S]*?<SegmentTemplate[\\s\\S]*?.m4s([\\s\\S]*?)<\\/SegmentTimeline>`);
     
     /* 위의 정규식 blockRegex는 .mpd의 해당 부분을 추출한다는 뜻
 
         <Representation id=...> <SegmentTemplate... 이후의
             
             startNumber="숫자">
-                <SetmentTimeline>
+                <SegmentTimeline>
                     이 안에 있는 1개 이상의 <S> 태그들..
-                </SetmentTimeline> 
+                </SegmentTimeline> 
             까지.
         match() 결과의 [1]번 원소, 즉
         아래 timeline에는 해당 부분이 문자열로 저장됨
@@ -70,15 +70,15 @@ export default function () {
     const mpdRes = http.get(`${BASE_URL}/samsoon.mpd`);
     
     // 비디오와 오디오의 라이브 엣지(가장 최신 지점)
-    const vNum = getLatestNum(mpdRes.body, VIDEO_REP_ID);
-    const aNum = getLatestNum(mpdRes.body, AUDIO_REP_ID);
+    const vNum = getLatestNum(mpdRes.body, VIDEO_ID);
+    const aNum = getLatestNum(mpdRes.body, AUDIO_ID);
 
     if (vNum && aNum) {
         // 비디오와 오디오 동시에 요청
         for(let i = 0; i < SEGMENTS_PER_MPD; i++) {
             // 각각 계산된 번호로 URL 생성
-            const vUrl = `${BASE_URL}/rep_${VIDEO_ID}/chunk_${pad(vNum + i)}.m4s`;
-            const aUrl = `${BASE_URL}/rep_${AUDIO_ID}/chunk_${pad(aNum + i)}.m4s`;
+            const vUrl = `${BASE_URL}/rep_${VIDEO_ID}/chunk_${pad(vNum + i, 5)}.m4s`;
+            const aUrl = `${BASE_URL}/rep_${AUDIO_ID}/chunk_${pad(aNum + i, 5)}.m4s`;
             const responses = http.batch([
                 ['GET', vUrl, { tags: { name: 'video' } }],
                 ['GET', aUrl, { tags: { name: 'audio' } }]
