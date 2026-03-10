@@ -1,0 +1,72 @@
+services:
+  netem:
+    build: ./netem
+    container_name: ${NETEM}
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+    networks:
+      clientside:
+        ipv4_address: ${NETEM_CLIENT_IP}
+      serverside:
+        ipv4_address: ${NETEM_SERVER_IP}
+    volumes:
+      - ./netem/data:/netem
+      - ./netem/startup.sh:/startup.sh
+      - ./netem/trace_start.sh:/trace_start.sh
+      - ./netem/trace_kill.sh:/trace_kill.sh
+      - ./${ENV_FILE}:/.env
+    entrypoint: /startup.sh
+
+  client:
+    build: ./client
+    container_name: ${CLIENT}
+    tty: true
+    cap_add:
+      - NET_ADMIN
+    networks:
+      clientside:
+        ipv4_address: ${CLIENT_IP}
+    volumes:
+      - ./client/data:/client
+      - ./client/startup.sh:/startup.sh
+      - /client/node_modules
+      - ./logs:/client/logs
+      - ./${ENV_FILE}:/.env
+    depends_on:
+      - netem
+    entrypoint: /startup.sh
+    shm_size: '2gb' # 메모리 크기 늘려줘야 함
+
+  server:
+    build: ./server
+    container_name: ${SERVER}
+    privileged: true
+    tty: true
+    networks:
+      serverside:
+        ipv4_address: ${SERVER_IP}
+    volumes:
+      - ./server/data:/server/
+      - ./logs:/server/logs
+      - /server/node_modules
+      - ./server/startup.sh:/startup.sh
+      - ./${ENV_FILE}:/.env
+    depends_on:
+      - netem
+      - client
+    entrypoint: /startup.sh
+
+networks:
+  clientside:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: ${NETWORK_CLIENT}
+  serverside:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: ${NETWORK_SERVER}
