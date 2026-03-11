@@ -15,6 +15,10 @@ let progress = 0;
 let time = -1;
 let saved = false;
 
+// 실험 시작 시간, 제한 시간 설정 위해 추가(260311)
+const experimentStartTime = Date.now();
+const maxExperimentTime = 120000; // 1.2*10^6 (ms). 즉 120초
+
 
 async function stop(browser) {
     process.stdout.write("exiting")
@@ -60,7 +64,10 @@ async function start() {
         function saveMetricLists(metrics) {
             let savedMetrics = 0;
             const logDir = __dirname + '/logs/' + abr + '/' + run_var;
-            if (!fs.existsSync(logDir)) fs.mkdirSync(logDir);
+            if (!fs.existsSync(logDir)) {
+                // 중첩 경로 생성 가능하도록 수정
+                fs.mkdirSync(logDir, { recursive: true });
+            }
 
             const qualityStream = fs.createWriteStream(logDir + '/' + 'quality.json', {flags: 'w'});
             const segmentStream = fs.createWriteStream(logDir + '/' + 'segment.json', {flags: 'w'});
@@ -189,6 +196,15 @@ async function start() {
                             console.log('\nPlayback finished');
                             time = Date.now();
                         }
+
+                        // 아직 저장 안함 + 시작 후 120초 경과 -> 강제 저장
+                        // (260311 수정)
+                        if(!saved && (Date.now() - experimentStartTime > maxExperimentTime)) {
+                            console.log('\n[!] Max experiment time reached. Forcing save...');
+                            saved = true;
+                            getMetricList();
+                        }
+
                         if (!saved && time > 0 && Date.now() - time > 20000) {
                             console.log('playbackEnded not thrown yet!');
                             saved = true;
