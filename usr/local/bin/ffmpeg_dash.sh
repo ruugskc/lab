@@ -8,10 +8,10 @@ exec >> "$LOG_FILE" 2>&1
 
 cd /tmp/dash/
 
-echo "인자로 전달받은 스트림 키: $NAME" >> $LOG_FILE
-echo "=== 방송 시작 시도: $(date) ===" >> $LOG_FILE
+echo "인자로 전달받은 스트림 키: $NAME"
+echo "=== 방송 시작 시도: $(date) ==="
 
-# 스트림 가용성 체크
+# RTMP 스트림 가용성 체크
 echo "RTMP 스트림 확인 중..."
 MAX_RETRIES=10
 SUCCESS=false
@@ -19,21 +19,23 @@ SUCCESS=false
 for i in $(seq 1 $MAX_RETRIES)
 do
     echo "[$i/$MAX_RETRIES] 접속 시도..."
-        # ffprobe로 1초만 체크해봅니다.
-        if /usr/bin/ffprobe -v error -rw_timeout 1000000 -i "rtmp://127.0.0.1/app/$NAME" ; then
-            echo "=> 스트림 확인 완료!"
-            SUCCESS=true
-                break
+    
+    # (2초 간격)ffprobe를 이용해 스트림 가용성 체크
+    if /usr/bin/ffprobe -v error -rw_timeout 1000000 -i "rtmp://127.0.0.1/app/$NAME" ; then
+        echo "=> 스트림 확인 완료!"
+        SUCCESS=true
+        break
     fi
     sleep 2
 done
 
 if [ "$SUCCESS" = false ]; then
-   echo "!! 에러: 스트림을 찾을 수 없어 종료합니다."
+   echo "에러 발생: 스트림을 찾을 수 없어 종료합니다."
    exit 1
 fi
 
-# 체크 성공하면 실시간 스트림 트랜스코딩+세그멘테이션
+# rtmp 스트림에 대한 실질적인 작업 수행
+# ffmpeg 이용한 트랜스코딩 + 세그멘테이션
 /usr/bin/ffmpeg -loglevel info -i "rtmp://localhost:1935/app/${NAME}" \
     -filter_complex "[0:v]split=2[v1][v2tmp]; [v2tmp]scale=640:-2[v2]" \
     -map "[v1]" -c:v:0 libx264 -preset ultrafast -tune zerolatency -b:v:0 2500k \
